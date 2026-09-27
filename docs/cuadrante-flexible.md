@@ -1,5 +1,7 @@
 # Cuadrante flexible: avance local y límite de backend
 
+> Informe histórico del commit 8bbfa36. La fase posterior autorizada resuelve localmente la edición/eliminación propia y añade estados/sustituciones. Véase [Asesores Ahora](asesores-ahora-sustituciones.md). El backend remoto sigue pendiente de actualización autorizada.
+
 Rama: `feature/cuadrante-asesores-flexible`.
 Base: `7d40a5c07fe9a05a9a07c4668fb15671d82147f8`.
 
