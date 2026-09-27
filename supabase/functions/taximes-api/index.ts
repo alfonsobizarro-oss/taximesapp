@@ -3,7 +3,7 @@ import {seed,visible,isAdmin, type Item} from './model.ts';
 import {apply} from './actions.ts';
 
 const backend=createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,{auth:{persistSession:false,autoRefreshToken:false}});
-const json=(value:unknown,status=200)=>Response.json(value,{status,headers:{'Cache-Control':'private, no-store'}});
+const json=(value:Record<string,unknown>,status=200)=>Response.json({...value,capabilities:{coordinationV1:true},serverTime:new Date().toISOString()},{status,headers:{'Cache-Control':'private, no-store'}});
 const has=(files:Item[],id:string)=>files?.some(f=>f.id===id);
 Deno.serve(async(req:Request)=>{
   try{
@@ -13,7 +13,7 @@ Deno.serve(async(req:Request)=>{
     if(authError||!identity.user)return json({error:'Tu sesión ha caducado. Vuelve a entrar.'},401);
     const account=identity.user;
     if(!account.email_confirmed_at)return json({error:'Confirma primero tu correo electrónico.'},403);
-    const {data:r,error:loadError}=await backend.rpc('tx_load');
+    const {data:r,error:loadError}=await backend.rpc('tx_load_coordination');
     if(loadError)throw loadError;
     const s=r.state;
     let user=s.users.find((u:Item)=>u.id===account.id)||{id:account.id,email:account.email,name:String(account.user_metadata?.name||'Delegado').slice(0,100),role:'delegate',status:'new'};
@@ -29,7 +29,7 @@ Deno.serve(async(req:Request)=>{
         if(!canSetup)return json({error:'Solo el propietario puede iniciar la aplicación.'},403);
         user={...user,role:'root',status:'active'};
         const next=seed(user);
-        const {data:version,error}=await backend.rpc('tx_commit',{expected_version:r.version,next_state:next});
+        const {data:version,error}=await backend.rpc('tx_commit_coordination',{expected_version:r.version,next_state:next,new_events:[]});
         if(error)throw error;
         return json({user,state:visible(next,user),version});
       }
@@ -45,13 +45,23 @@ Deno.serve(async(req:Request)=>{
         }
         action.files=verified;
       }
-      apply(s,user,action);
+      const events=apply(s,user,action)||[];
       if(JSON.stringify(s).length>1800000)return json({error:'La prueba ha alcanzado su capacidad. Contacta con administración.'},413);
-      const {data:version,error}=await backend.rpc('tx_commit',{expected_version:r.version,next_state:s});
+      const {data:version,error}=await backend.rpc('tx_commit_coordination',{expected_version:r.version,next_state:s,new_events:events});
       if(error)throw error;
       return json({user,state:user.status==='active'?visible(s,user):null,version});
     }
     if(user.status!=='active')return json({error:'Acceso no autorizado.'},403);
+    if(path==='coordination-history'&&req.method==='GET'){
+      if(!isAdmin(user))return json({error:'Solo Administración puede consultar el histórico.'},403);
+      const before=new URL(req.url).searchParams.get('before');
+      if(before!==null&&!/^\d{1,18}$/.test(before))return json({error:'Página no válida.'},400);
+      let query=backend.from('tx_coordination_events').select('sequence,event').order('sequence',{ascending:false}).limit(51);
+      if(before)query=query.lt('sequence',before);
+      const {data:rows,error}=await query;if(error)throw error;
+      const page=rows.slice(0,50);
+      return json({events:page.map(row=>row.event),nextCursor:rows.length>50?String(page[49].sequence):null});
+    }
     if(path==='files'&&req.method==='POST'){
       const form=await req.formData(),f=form.get('file');
       if(!(f instanceof File)||!f.size||f.size>10485760)return json({error:'Máximo 10 MB por archivo.'},413);

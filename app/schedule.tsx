@@ -4,9 +4,12 @@ import {useState} from 'react';
 import {AlertCircle, Check, ChevronLeft, ChevronRight, Clock3, Pencil, Plus, Users} from 'lucide-react';
 import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle} from '@/components/ui/dialog';
 import {coverage, dateAdd, isAdmin, monday, type Item, type State} from '@/lib/model';
+import {coveringShifts} from '@/lib/advisers';
 import {clockLabel, dayCoverage, draftTimes, durationLabel, shiftControls, type ShiftDraft} from '@/lib/schedule';
 
 type Props = {
+  coordinationReady?: boolean;
+  initiallyJoin?: boolean;
   state: State;
   user: Item;
   week: string;
@@ -17,31 +20,33 @@ type Props = {
 };
 
 type Editor = {id?: string; draft: ShiftDraft};
-export default function Schedule({state, user, week, onWeekChange, lang, busy, act}: Props) {
+export default function Schedule({state, user, week, onWeekChange, lang, busy, act, coordinationReady = false, initiallyJoin = false}: Props) {
   const t = (es: string, ca: string) => lang === 'ca' ? ca : es;
   const admin = isAdmin(user);
   const [selected, setSelected] = useState(week);
-  const [editor, setEditor] = useState<Editor | null>(null);
+  const [editor, setEditor] = useState<Editor | null>(() => initiallyJoin ? {draft: {day: week, startTime: '', endTime: '', nextDay: false, userId: user.id}} : null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [error, setError] = useState('');
   const day = selected >= week && selected < dateAdd(week, 7) ? selected : week;
   const person = (id: string) => state.users.find(u => u.id === id)?.name || t('Asesor no disponible', 'Assessor no disponible');
   const dateLabel = (value: string, weekday = false) => new Intl.DateTimeFormat(lang === 'ca' ? 'ca-ES' : 'es-ES', {
     day: 'numeric', month: 'short', ...(weekday ? {weekday: 'long' as const} : {}), timeZone: 'UTC',
   }).format(new Date(value + 'T12:00:00Z'));
+  const availableShifts = coveringShifts(state);
   const days = Array.from({length: 7}, (_, i) => {
-    const date = dateAdd(week, i), periods = dayCoverage(state.shifts, date);
+    const date = dateAdd(week, i), periods = dayCoverage(availableShifts, date);
     const gaps = periods.filter(p => !p.userIds.length);
     return {date, periods, gaps, uncovered: gaps.reduce((sum, p) => sum + p.end - p.start, 0)};
   });
   const current = days.find(d => d.date === day)!;
-  const total = coverage(state.shifts, week);
+  const total = coverage(availableShifts, week);
   const shifts = state.shifts.filter(s => s.status !== 'cancelled' && s.start < dateAdd(day, 1) + 'T00:00' && s.end > day + 'T00:00')
     .sort((a, b) => a.start.localeCompare(b.start) || a.end.localeCompare(b.end));
   // Resolve from live state so a refresh never leaves stale permissions in the dialog.
   const detail = state.shifts.find(s => s.id === detailId && s.status !== 'cancelled');
-  const controls = detail ? shiftControls(user, detail) : null;
+  const controls = detail ? shiftControls(user, detail, coordinationReady) : null;
   const draft = editor?.draft;
   const times = draft ? draftTimes(draft) : null;
   const activeUsers = state.users.filter(u => u.status === 'active');
@@ -51,7 +56,7 @@ export default function Schedule({state, user, week, onWeekChange, lang, busy, a
     setEditor({draft: {day: date, startTime, endTime, nextDay, userId: String(user.id)}});
   }
   function edit(shift: Item) {
-    if (!shiftControls(user, shift).edit) return;
+    if (!shiftControls(user, shift, coordinationReady).edit) return;
     setDetailId(null); setError('');
     setEditor({id: shift.id, draft: {day: shift.start.slice(0, 10), startTime: shift.start.slice(11, 16),
       endTime: shift.end.slice(11, 16), nextDay: shift.end.slice(0, 10) !== shift.start.slice(0, 10), userId: shift.userId}});
@@ -65,7 +70,7 @@ export default function Schedule({state, user, week, onWeekChange, lang, busy, a
     if (!times) {setError(t('Revisa las horas. El tramo debe durar entre 1 minuto y 24 horas. Si termina mañana, marca «Finaliza al día siguiente».',
       'Revisa les hores. El tram ha de durar entre 1 minut i 24 hores. Si acaba demà, marca «Finalitza l’endemà».')); return;}
     const existing = editor.id ? state.shifts.find(s => s.id === editor.id) : null;
-    if (editor.id && (!existing || !shiftControls(user, existing).edit)) {
+    if (editor.id && (!existing || !shiftControls(user, existing, coordinationReady).edit)) {
       setError(t('Este horario ya no se puede modificar. Cierra y actualiza el cuadrante.', 'Aquest horari ja no es pot modificar. Tanca i actualitza el quadrant.')); return;
     }
     const userId = admin ? editor.draft.userId : user.id;
@@ -129,8 +134,10 @@ export default function Schedule({state, user, week, onWeekChange, lang, busy, a
 
     <section className="schedule-assigned"><h2>{t('Horarios del día', 'Horaris del dia')}</h2>
       <p>{t('Toca un horario para ver sus opciones. Puedes añadir varios tramos al día.', 'Toca un horari per veure’n les opcions. Pots afegir diversos trams al dia.')}</p>
-      <div className="schedule-shifts">{shifts.map(s => <button className={'schedule-shift ' + (s.userId === user.id ? 'mine' : '')} key={s.id} onClick={() => {setDetailId(s.id); setCancelReason(null);}}>
+      <div className="schedule-shifts">{shifts.map(s => <button className={'schedule-shift ' + (s.userId === user.id ? 'mine' : '')} key={s.id} onClick={() => {setDetailId(s.id); setCancelReason(null); setDeleteConfirm(false);}}>
         <Clock3 size={20}/><span><strong>{s.start.slice(0, 10) < day ? '00:00' : s.start.slice(11, 16)}–{s.end.slice(0, 10) > day ? '24:00' : s.end.slice(11, 16)}</strong><span>{person(s.userId)}{s.userId === user.id ? t(' · Tú', ' · Tu') : ''}</span>
+          {state.users.find(u => u.id === s.userId)?.status !== 'active' && <small>{t('Acceso inactivo · No cuenta como cobertura', 'Accés inactiu · No compta com a cobertura')}</small>}
+          {s.replacesUserId && <small>🔄 {t('Sustitución de', 'Substitució de')} {person(s.replacesUserId)}</small>}
           {s.status === 'cancel_requested' && <small>{t('Cancelación pendiente · Sigue cubriendo', 'Cancel·lació pendent · Continua cobrint')}</small>}</span><ChevronRight size={18}/>
       </button>)}</div>
       {!shifts.length && <p>{t('Todavía no hay horarios. Sé el primero en apuntarte.', 'Encara no hi ha horaris. Sigues el primer a apuntar-t’hi.')}</p>}
@@ -158,8 +165,9 @@ export default function Schedule({state, user, week, onWeekChange, lang, busy, a
       {detail && controls && <><p className="schedule-form-summary">{dateLabel(detail.start.slice(0, 10))} · {detail.start.slice(11, 16)} → {dateLabel(detail.end.slice(0, 10))} · {detail.end.slice(11, 16)}</p>
         {detail.status === 'cancel_requested' && <p className="schedule-time-note"><Clock3 size={18}/>{t('Cancelación pendiente. Este horario sigue cubriendo hasta su aprobación.', 'Cancel·lació pendent. Aquest horari continua cobrint fins a l’aprovació.')}</p>}
         {detail.reason && <p>{detail.reason}</p>}
-        {!admin && detail.userId === user.id && <p>{t('Para modificar este horario, contacta con Administración. Las cancelaciones todavía requieren su aprobación.', 'Per modificar aquest horari, contacta amb Administració. Les cancel·lacions encara requereixen la seva aprovació.')}</p>}
+        {!coordinationReady && !admin && detail.userId === user.id && <p>{t('Para modificar este horario, contacta con Administración. Las cancelaciones todavía requieren su aprobación.', 'Per modificar aquest horari, contacta amb Administració. Les cancel·lacions encara requereixen la seva aprovació.')}</p>}
         {controls.edit && <button className="primary" disabled={busy} onClick={() => edit(detail)}><Pencil size={18}/>{t('Modificar horario', 'Modifica l’horari')}</button>}
+        {controls.delete && (deleteConfirm ? <div className="schedule-decision"><p>{t('¿Eliminar este tramo? Quedará conservado en el histórico.', 'Vols eliminar aquest tram? Es conservarà a l’històric.')}</p><button className="primary" disabled={busy} onClick={async () => {if (await act({type: 'shift.delete', id: detail.id})) {setDetailId(null); setDeleteConfirm(false);}}}>{t('Confirmar eliminación', 'Confirma l’eliminació')}</button><button className="secondary" disabled={busy} onClick={() => setDeleteConfirm(false)}>{t('Volver', 'Torna')}</button></div> : <button className="secondary" disabled={busy} onClick={() => setDeleteConfirm(true)}>{t('Eliminar horario', 'Elimina l’horari')}</button>)}
         {controls.requestCancellation && cancelReason === null && <button className="secondary" disabled={busy} onClick={() => setCancelReason('')}>{t('Solicitar cancelación', 'Sol·licita la cancel·lació')}</button>}
         {controls.requestCancellation && cancelReason !== null && <form className="modal-form" onSubmit={requestCancellation}><label>{t('Motivo de la cancelación', 'Motiu de la cancel·lació')}<textarea required maxLength={500} value={cancelReason} disabled={busy} onChange={e => setCancelReason(e.target.value)}/></label><button className="primary" disabled={busy || !cancelReason.trim()}>{t('Enviar solicitud', 'Envia la sol·licitud')}</button></form>}
         {controls.decideCancellation && <div className="schedule-decision"><button className="secondary" disabled={busy} onClick={() => decideCancellation(false)}>{t('Rechazar cancelación', 'Rebutja la cancel·lació')}</button><button className="primary" disabled={busy} onClick={() => decideCancellation(true)}>{t('Aprobar cancelación', 'Aprova la cancel·lació')}</button></div>}

@@ -1,4 +1,4 @@
-import {dateAdd, isAdmin, type Item} from './model';
+import {dateAdd, isAdmin, type Item} from './model.ts';
 
 // These values are Barcelona wall-clock times, matching the existing shifts API.
 // Do not let the browser timezone change the selected date or minute.

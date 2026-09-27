@@ -1,18 +1,9 @@
 /* eslint-disable @typescript-eslint/no-require-imports -- Standalone Node test runner, matching the existing test suite. */
-const fs = require('node:fs');
-const path = require('node:path');
-const ts = require('typescript');
 const assert = require('node:assert/strict');
-const root = path.resolve(__dirname, '..');
-function load(file, dependencies = {}) {
-  const code = ts.transpileModule(fs.readFileSync(path.join(root, file), 'utf8'), {compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022}}).outputText;
-  const m = {exports: {}};
-  new Function('require', 'module', 'exports', code)(name => dependencies[name] || require(name), m, m.exports);
-  return m.exports;
-}
+const load = require('./load.cjs');
 const model = load('lib/model.ts');
-const {apply} = load('lib/actions.ts', {'./model': model});
-const {dayCoverage, draftTimes, shiftControls, clockLabel} = load('lib/schedule.ts', {'./model': model});
+const {apply} = load('lib/actions.ts');
+const {dayCoverage, draftTimes, shiftControls, clockLabel} = load('lib/schedule.ts');
 const rootUser = {id: 'root', name: 'Root', role: 'root', status: 'active'};
 const admin = {id: 'admin', name: 'Admin', role: 'admin', status: 'active'};
 const advisor = {id: 'a', name: 'Asesor 538', role: 'delegate', status: 'active'};
@@ -64,17 +55,18 @@ assert.equal(state.shifts.length, 2);
 assert.equal(state.shifts[0].start, day + 'T07:30');
 assert.equal(state.shifts[1].userId, advisor.id);
 const own = state.shifts[0];
-assert.throws(() => apply(state, advisor, {type: 'shift.create', userId: other.id, start: day + 'T08:00', end: day + 'T09:00'}), /administración/);
+assert.throws(() => apply(state, advisor, {type: 'shift.create', userId: other.id, start: day + 'T08:00', end: day + 'T09:00'}), /Administración|ajenos/);
 apply(state, admin, {type: 'shift.create', userId: other.id, start: day + 'T08:00', end: day + 'T09:00'});
 const theirs = state.shifts[2];
-assert.throws(() => apply(state, advisor, {type: 'shift.edit', id: theirs.id, userId: advisor.id, start: day + 'T09:00', end: day + 'T10:00'}), /administración/);
+assert.throws(() => apply(state, advisor, {type: 'shift.edit', id: theirs.id, userId: advisor.id, start: day + 'T09:00', end: day + 'T10:00'}), /Administración|ajenos/);
 assert.throws(() => apply(state, advisor, {type: 'shift.cancelRequest', id: theirs.id, reason: 'No autorizado'}), /No puedes/);
-assert.throws(() => apply(state, advisor, {type: 'shift.cancelDecision', id: theirs.id, approve: true}), /administración/);
-// Document the current backend blocker, rather than falsely treating own edits/deletes as supported.
-assert.throws(() => apply(state, advisor, {type: 'shift.edit', id: own.id, start: day + 'T09:00', end: day + 'T10:00'}), /administración/);
-assert.throws(() => apply(state, advisor, {type: 'shift.delete', id: own.id}), /desconocida/);
-assert.deepEqual(shiftControls(advisor, own), {edit: false, requestCancellation: true, decideCancellation: false});
-assert.deepEqual(shiftControls(advisor, theirs), {edit: false, requestCancellation: false, decideCancellation: false});
+assert.throws(() => apply(state, advisor, {type: 'shift.cancelDecision', id: theirs.id, approve: true}), /Administración|ajenos/);
+// New server enforces ownership; old backend capabilities keep the prior UI until rollout.
+apply(state, advisor, {type: 'shift.edit', id: own.id, start: day + 'T09:00', end: day + 'T10:00'});
+assert.deepEqual(shiftControls(advisor, own), {edit: false, delete: false, requestCancellation: true, decideCancellation: false});
+assert.deepEqual(shiftControls(advisor, own, true), {edit: true, delete: true, requestCancellation: false, decideCancellation: false});
+assert.deepEqual(shiftControls(advisor, theirs, true), {edit: false, delete: false, requestCancellation: false, decideCancellation: false});
+assert.throws(() => apply(state, advisor, {type: 'shift.delete', id: theirs.id}), /ajenos/);
 assert.equal(shiftControls(admin, theirs).edit, true);
 assert.equal(shiftControls(rootUser, theirs).edit, true);
 assert.equal(shiftControls({...advisor, status: 'blocked'}, own).requestCancellation, false);
@@ -90,4 +82,6 @@ assert.ok(state.audit.some(a => a.type === 'shift.create'));
 assert.ok(state.audit.some(a => a.type === 'shift.edit'));
 assert.ok(state.audit.some(a => a.type === 'shift.cancelDecision'));
 console.log('PASS: free times, multiple slots, midnight/year boundaries, overlaps, gaps, DST wall-clock consistency, roles and existing audit.');
-console.log('CONFIRMED BACKEND LIMIT: advisor self-edit and direct deletion require an authorized Edge Function change.');
+apply(state, advisor, {type: 'shift.delete', id: state.shifts[1].id});
+assert.equal(state.shifts[1].status, 'cancelled');
+console.log('PASS: own edit/soft delete, foreign edit/delete denied, capability rollout guard.');
