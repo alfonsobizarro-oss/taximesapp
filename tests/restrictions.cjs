@@ -1,10 +1,9 @@
 const fs=require('node:fs');
 const path=require('node:path');
-const ts=require('typescript');
 const assert=require('node:assert/strict');
 const root=path.resolve(__dirname,'..');
-function moduleFrom(file,dependencies={}){const code=ts.transpileModule(fs.readFileSync(path.join(root,file),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;const m={exports:{}};new Function('require','module','exports',code)(name=>dependencies[name]||require(name),m,m.exports);return m.exports}
-const model=moduleFrom('lib/model.ts'),{apply}=moduleFrom('lib/actions.ts',{'./model':model});
+const load=require('./load.cjs');
+const model=load('lib/model.ts'),{apply}=load('lib/actions.ts');
 const rootUser={id:'owner',name:'Owner',role:'root',status:'active'};
 const admin={id:'admin',name:'Admin',role:'admin',status:'active'};
 const delegate={id:'delegate',name:'Delegate',role:'delegate',status:'active'};
@@ -32,5 +31,5 @@ apply(state,admin,{type:'import',members:[{fleet:'NEW-FLEET',license:member.lice
 assert.equal(member.status,'inactive');assert.equal(member.restrictions.length,2);
 assert.equal(state.members.find(m=>m.fleet==='NEW-FLEET').restrictions,undefined);
 assert.equal(model.visible(state,delegate).members[0].restrictions.length,1);
-for(const file of ['actions.ts','model.ts'])assert.equal(fs.readFileSync(path.join(root,'supabase/functions/taximes-api',file),'utf8'),fs.readFileSync(path.join(root,'lib',file),'utf8').replace("from './model'","from './model.ts'"));
+for(const file of ['actions.ts','model.ts','schedule.ts','advisers.ts','coordination.ts'])assert.equal(fs.readFileSync(path.join(root,'supabase/functions/taximes-api',file),'utf8'),fs.readFileSync(path.join(root,'lib',file),'utf8').replace(/from '(\.\/[^']+)'/g,"from '$1.ts'"));
 console.log('PASS: admin/root CRUD, delegate rejection, dates, audit, deleted privacy, import history, licence sale isolation, edge source parity.');

@@ -13,7 +13,7 @@
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
     "typecheck": "tsc --noEmit",
-    "test": "node tests/restrictions.cjs",
+    "test": "node tests/restrictions.cjs && node tests/schedule.cjs && node tests/coordination.cjs && node tests/coordination-db.cjs && node tests/coordination-api.cjs",
     "deploy": "wrangler deploy --config dist/server/cloudflare-wrangler.json"
   },
   "dependencies": {
@@ -47,6 +47,7 @@
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.37.1",
     "@cloudflare/workers-types": "4.20260515.1",
+    "@electric-sql/pglite": "0.5.8",
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
     "@types/react": "19.2.14",
