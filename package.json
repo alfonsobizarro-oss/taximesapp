@@ -13,7 +13,7 @@
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
     "typecheck": "tsc --noEmit",
-    "test": "node tests/restrictions.cjs",
+    "test": "node tests/restrictions.cjs && node tests/schedule.cjs",
     "deploy": "wrangler deploy --config dist/server/cloudflare-wrangler.json"
   },
   "dependencies": {
