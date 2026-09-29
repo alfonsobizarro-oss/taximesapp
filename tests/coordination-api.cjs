@@ -10,8 +10,8 @@ const a={id:'a',name:'Asesor 538',role:'delegate',status:'active'},b={id:'b',nam
 const now=madridMinute();const initial=seed(admin);initial.users=[a,b,admin];initial.shifts=[{id:'one',userId:'a',start:addMinutes(now,-60),end:addMinutes(now,60),status:'confirmed'}];
 let state=structuredClone(initial), version=10, commitCount=0, handler, loadedCalls=[], account=a, authError=false, confirmed=true;
 const backend={auth:{getUser:async()=>({data:{user:authError?null:{...account,email_confirmed_at:confirmed?'yes':null,user_metadata:{role:'root'}}},error:authError})},
- rpc:async(name,args)=>{loadedCalls.push(name);if(name==='tx_load_coordination')return {data:{state:structuredClone(state),version,initialized:true}};
- assert.equal(name,'tx_commit_coordination');assert.equal(args.expected_version,version);assert.ok(Array.isArray(args.new_events));state=args.next_state;version++;commitCount++;return {data:version};},
+ rpc:async(name,args)=>{loadedCalls.push(name);if(name==='tx_load_reservations')return {data:{state:structuredClone(state),version,initialized:true}};
+ assert.equal(name,'tx_commit_reservations');assert.equal(args.expected_version,version);assert.ok(Array.isArray(args.new_events));state=args.next_state;version++;commitCount++;return {data:version};},
  from:table=>{assert.equal(table,'tx_coordination_events');const query={select(){return this},order(){return this},limit(){return this},lt(){return this},then(resolve){return Promise.resolve({data:[{sequence:1,event:{id:'event',type:'shift_created'}}]}).then(resolve)}};return query;}
 };
 const code=ts.transpileModule(fs.readFileSync(path.join(__dirname,'../supabase/functions/taximes-api/index.ts'),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
@@ -35,8 +35,14 @@ const call=(route='state',action=null,token=true)=>handler(new Request('http://t
  assert.equal((await call('state',{type:'substitution.accept',id})).status,400);
  account={...a,status:'blocked'};state.users=state.users.map(u=>u.id==='a'?account:u);
  assert.equal((await call('state',{type:'adviser.status',status:'busy'})).status,400);assert.equal((await call('coordination-history')).status,403);
+ const reserve={id:'reserve',name:'Reservas',role:'reservation',status:'active',reservationTypes:['MONOVOLUMEN'],memberId:'m'};
+ state.users.push(reserve);account=reserve;
+ for(const route of ['files','files/00000000-0000-0000-0000-000000000000','coordination-history','reservation-history'])assert.equal((await call(route)).status,403);
+ assert.equal((await call('state',{type:'chat.send',text:'forbidden'})).status,400);
+ res=await call();json=await res.json();for(const key of ['members','messages','incidents','documents','shifts','audit'])assert.deepEqual(json.state[key],[]);
+ assert.equal(json.state.users.length,1);assert.equal(json.state.users[0].id,'reserve');
  account=admin;res=await call('coordination-history');assert.equal(res.status,200);assert.equal((await res.json()).events[0].id,'event');
  assert.equal((await call('coordination-history?before=bad')).status,400);
- assert.ok(loadedCalls.every(name=>['tx_load_coordination','tx_commit_coordination'].includes(name)));
+ assert.ok(loadedCalls.every(name=>['tx_load_reservations','tx_commit_reservations'].includes(name)));
  console.log('PASS: actual Edge handler with local backend double — JWT/account checks, metadata ignored, authoritative roles, API ownership, capability flag, version conflicts, private reasons and admin-only history.');
 })().catch(error=>{console.error(error);process.exitCode=1});
