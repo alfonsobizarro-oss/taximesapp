@@ -5,10 +5,14 @@ import {fileURLToPath} from 'node:url';
 import {createRequire} from 'node:module';
 const require = createRequire(import.meta.url);
 const {seed, visible} = require('../load.cjs')('lib/model.ts');
+const {apply} = require('../load.cjs')('lib/actions.ts');
 const project = fileURLToPath(new URL('../../', import.meta.url));
 const rootUser = {id:'test-root',email:'admin@example.test',name:'Administración local',role:'root',status:'active'};
-const pendingUser = {id:'test-new',email:'new@example.test',name:'Usuario nuevo local',role:'delegate',status:'new'};
+const pendingUser = {id:'test-new',email:'new@example.test',name:'Usuario nuevo local',role:'pending',status:'pending'};
 const state = seed(rootUser);
+state.users.push(pendingUser);
+state.members.push({id:'real-local',fleet:'999',name:'Asociado local de prueba',status:'active',drivers:[],requirements:[],history:[]});
+let version=1;
 const accounts = new Map();
 const refreshAccounts = new Map();
 function session(email) {
@@ -28,7 +32,15 @@ function mockApi() {return {name:'local-only-integration-api',configureServer(se
     const reply = (status,data) => {res.statusCode=status;res.end(JSON.stringify(data));};
     let body={};try {if(req.method==='POST'){let raw='';for await (const part of req) raw+=part;body=raw?JSON.parse(raw):{};}}catch{return reply(400,{error:'Local invalid JSON'});}
     const account=accounts.get((req.headers.authorization||'').replace('Bearer ',''));
-    if(url.pathname==='/api/state')return account?reply(200,{user:account,state:account.status==='active'?visible(state,account):null,version:1,setup:false,serverTime:new Date().toISOString()}):reply(401,{error:'Local: inicia sesión'});
+    if(url.pathname==='/api/state'){
+      if(!account)return reply(401,{error:'Local: inicia sesión'});
+      const current=state.users.find(u=>u.id===account.id)||account;
+      if(req.method==='POST'){
+        if(body.version!==version)return reply(409,{error:'Actualiza la vista local'});
+        try{apply(state,current,body);version++;}catch(error){return reply(400,{error:error.message});}
+      }
+      return reply(200,{user:current,state:current.status==='active'?visible(state,current):null,version,setup:false,capabilities:{coordinationV1:true,reservationsV1:true},serverTime:new Date().toISOString()});
+    }
     if(url.pathname.endsWith('/token')) {
       const email = url.searchParams.get('grant_type') === 'refresh_token' ? refreshAccounts.get(body.refresh_token)?.email : body.email;
       return [rootUser.email,pendingUser.email].includes(email) ? reply(200,session(email)) : reply(401,{msg:'Unknown local account'});

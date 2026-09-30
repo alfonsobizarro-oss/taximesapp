@@ -1,11 +1,15 @@
+import {applyReservations,isReservationUser} from './reservations.ts';
 import {coveringShifts} from './advisers.ts';
 import {applyCoordination} from './coordination.ts';
 import {State,Item,isAdmin,coverage} from './model.ts';
 const text=(x:any,max=5000)=>{if(typeof x!=='string'||!x.trim()||x.length>max)throw Error('Revisa los campos obligatorios.');return x.trim()};
 const id=()=>crypto.randomUUID();
 export function apply(s:State,u:Item,a:Item){const now=new Date().toISOString();const admin=()=>{if(!isAdmin(u))throw Error('Esta acción corresponde a administración.')};const find=(list:Item[],key:string)=>{const v=list.find(x=>x.id===key);if(!v)throw Error('No se ha encontrado el registro.');return v};const notify=(title:string,target='all',section='incidents')=>s.notifications.unshift({id:id(),title,target,section,created:now,readBy:[]});const files=(f:any)=>Array.isArray(f)?f.slice(0,5):[];
-if(a.type==='register'){if(u.status==='active')throw Error('Tu acceso ya está aprobado.');u.name=text(a.name,100);u.phone=String(a.phone||'').slice(0,30);u.status='pending';if(!s.users.some(x=>x.id===u.id))s.users.push(u);notify('Nueva solicitud de acceso: '+u.name,'admins','users');return}
+if(a.type==='register'){if(u.status==='active')throw Error('Tu acceso ya está aprobado.');if(u.status==='blocked')throw Error('Tu acceso está desactivado.');u.name=text(a.name,100);u.phone=String(a.phone||'').slice(0,30);u.status='pending';u.role='pending';delete u.reservationTypes;delete u.memberId;if(!s.users.some(x=>x.id===u.id))s.users.push(u);notify('Nueva solicitud de acceso: '+u.name,'admins','users');return}
 if(u.status!=='active')throw Error('Tu acceso está pendiente de aprobación.');
+const reservations=applyReservations(s,u,a);if(reservations!==null)return reservations;
+if(!['root','admin','delegate','reservation'].includes(u.role))throw Error('Perfil pendiente de asignación.');
+if(isReservationUser(u)&&a.type!=='notification.read')throw Error('Tu acceso está limitado a reservas.');
 const coordination=applyCoordination(s,u,a);if(coordination!==null)return coordination;
 switch(a.type){
 case 'restriction.save': {
@@ -35,9 +39,17 @@ case 'document.save': {admin();const title=text(a.title,160);let v=a.id?find(s.d
 case 'document.read':{const v=find(s.documents,a.id);if(!v.reads.some((r:Item)=>r.userId===u.id))v.reads.push({userId:u.id,name:u.name,created:now,version:v.version});break}
 case 'poll.create': {admin();const options=Array.isArray(a.options)?a.options.map((x:any)=>text(x,150)):[];if(options.length<2||options.length>8||new Set(options).size!==options.length)throw Error('Introduce entre 2 y 8 opciones distintas.');if(!a.closes||Date.parse(a.closes)<=Date.now())throw Error('Selecciona una fecha futura.');s.polls.unshift({id:id(),title:text(a.title,160),options,anonymous:!!a.anonymous,closes:a.closes,votes:[],created:now});notify('Nueva encuesta: '+a.title,'all','polls');break}
 case 'poll.vote': {const v=find(s.polls,a.id);if(Date.parse(v.closes)<Date.now())throw Error('La encuesta está cerrada.');if(!Number.isInteger(a.option)||!v.options[a.option])throw Error('Opción no válida.');v.votes=v.votes.filter((r:Item)=>r.userId!==u.id);v.votes.push({userId:u.id,option:a.option});break}
-case 'user.update':{if(u.role!=='root')throw Error('Solo el administrador principal puede gestionar accesos.');const v=find(s.users,a.id);if(v.id===u.id)throw Error('No puedes retirar tu propio acceso.');if(!['admin','delegate'].includes(a.role)||!['active','blocked','pending'].includes(a.status))throw Error('Permiso no válido.');v.role=a.role;v.status=a.status;notify('Tu acceso ha sido actualizado',v.id,'home');break}
+case 'user.update': {
+admin();const v=find(s.users,a.id);
+if(v.role==='root'||v.id===u.id)throw Error('No puedes modificar el administrador principal ni tu propio acceso.');
+if((v.role==='admin'||a.role==='admin')&&u.role!=='root')throw Error('Solo el administrador principal puede gestionar administradores.');
+if(!['admin','delegate','reservation','pending'].includes(a.role)||!['active','blocked','pending'].includes(a.status)||(a.role==='pending'&&a.status==='active'))throw Error('Selecciona un perfil antes de aprobar el acceso.');
+if(a.role==='reservation')return applyReservations(s,u,{...a,type:'reservation.authorize',userId:v.id});
+v.role=a.role;v.status=a.status;delete v.reservationTypes;delete v.memberId;
+notify('Tu acceso ha sido actualizado',v.id,'home');break
+}
 case 'categories':{admin();if(!Array.isArray(a.categories)||!a.categories.length)throw Error('Debe existir al menos una categoría.');s.categories=[...new Set(a.categories.map((x:any)=>text(x,100)))];break}
-case 'notification.read': {for(const n of s.notifications)if(n.target==='all'||n.target===u.id||n.target==='admins'&&isAdmin(u)){if(!n.readBy.includes(u.id))n.readBy.push(u.id)}break}
+case 'notification.read': {for(const n of s.notifications)if((!isReservationUser(u)||(n.section==='reservations'&&n.target===u.id))&&(n.target==='all'||n.target===u.id||n.target==='admins'&&isAdmin(u))){if(!n.readBy.includes(u.id))n.readBy.push(u.id)}break}
 default:throw Error('Acción desconocida.')}
 s.audit.unshift({id:id(),type:a.type,author:u.name,created:now,record:a.id||''});s.audit=s.audit.slice(0,3000);s.notifications=s.notifications.slice(0,2000);
 }

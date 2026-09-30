@@ -13,7 +13,7 @@
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
     "typecheck": "tsc --noEmit",
-    "test": "node tests/restrictions.cjs && node tests/schedule.cjs && node tests/coordination.cjs && node tests/coordination-db.cjs && node tests/coordination-api.cjs && node tests/auth.cjs && node tests/staff-integration.cjs",
+    "test": "node tests/restrictions.cjs && node tests/schedule.cjs && node tests/coordination.cjs && node tests/coordination-db.cjs && node tests/coordination-api.cjs && node tests/auth.cjs && node tests/staff-integration.cjs && node tests/reservations.cjs && node tests/reservations-db.cjs && node tests/reservation-mail.cjs && node tests/user-profiles.cjs",
     "deploy": "wrangler deploy --config dist/server/cloudflare-wrangler.json",
     "test:auth": "node tests/auth.cjs"
   },

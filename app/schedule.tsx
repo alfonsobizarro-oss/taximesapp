@@ -49,7 +49,7 @@ export default function Schedule({state, user, week, onWeekChange, lang, busy, a
   const controls = detail ? shiftControls(user, detail, coordinationReady) : null;
   const draft = editor?.draft;
   const times = draft ? draftTimes(draft) : null;
-  const activeUsers = state.users.filter(u => u.status === 'active');
+  const activeUsers = state.users.filter(u => u.status === 'active' && ['root', 'admin', 'delegate'].includes(u.role));
 
   function create(date = day, startTime = '', endTime = '', nextDay = false) {
     setError('');
