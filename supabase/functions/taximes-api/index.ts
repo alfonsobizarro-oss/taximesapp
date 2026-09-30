@@ -46,7 +46,7 @@ Deno.serve(async(req:Request)=>{
         action.files=verified;
       }
       const events=apply(s,user,action)||[];
-      if(JSON.stringify(s).length>1800000)return json({error:'La prueba ha alcanzado su capacidad. Contacta con administración.'},413);
+      if(JSON.stringify(s).length>1800000)return json({error:'Se ha alcanzado el límite de capacidad de la aplicación. Contacta con administración.'},413);
       const {data:version,error}=await backend.rpc('tx_commit_coordination',{expected_version:r.version,next_state:s,new_events:events});
       if(error)throw error;
       return json({user,state:user.status==='active'?visible(s,user):null,version});
