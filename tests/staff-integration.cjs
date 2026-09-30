@@ -1,0 +1,25 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const load = require('./load.cjs');
+const {seed, visible} = load('lib/model.ts');
+const {isDemoRecord, hasDemoRecords} = load('lib/demo-records.ts');
+const admin = {id:'root',name:'Admin',role:'root',status:'active'};
+const state = seed(admin), before = structuredClone(state);
+assert.ok(hasDemoRecords(state));
+assert.ok(isDemoRecord('messages',state.messages[0]));
+assert.ok(isDemoRecord('documents',state.documents[0]));
+assert.ok(isDemoRecord('polls',state.polls[0]));
+assert.equal(isDemoRecord('documents',{...state.documents[0],title:'Documento actualizado',body:'Contenido real'}),false);
+assert.equal(isDemoRecord('messages',{id:'msg-1',text:'Información actual'}),false);
+assert.equal(isDemoRecord('polls',{...state.polls[0],options:['Otra']}),false);
+assert.equal(hasDemoRecords({...state,users:[admin],members:[],incidents:[],messages:[],documents:[],polls:[]}),false);
+assert.deepEqual(state,before,'Presentation classification must not mutate stored records');
+assert.equal(visible(state,admin).users[0].role,'root');
+const manifest=JSON.parse(fs.readFileSync('public/manifest.webmanifest','utf8'));
+assert.equal(manifest.name,'Staff Taximés');assert.equal(manifest.short_name,'Staff Taximés');assert.equal(manifest.start_url,'/');
+const gate=fs.readFileSync('app/auth-gate.tsx','utf8');
+assert.ok(gate.includes('Staff Taximés'));assert.ok(gate.includes('Código de verificación'));assert.ok(gate.includes('onAuthStateChange'));assert.ok(gate.includes('signInWithPassword'));assert.ok(gate.includes("mode !== 'password'"));
+assert.doesNotMatch(gate,/<<<<<<<|>>>>>>>|TAXIMÉS · DELEGADOS/);
+assert.doesNotMatch(fs.readFileSync('app/workspace.tsx','utf8'),/VERSIÓN DE PRUEBA|Versión de prueba|TAXIMÉS · DELEGADOS/);
+console.log('PASS Staff integration: PWA, preserved OTP/password/session access, unchanged roles, demo labels only on identified content, no record mutation.');
