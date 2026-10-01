@@ -4,7 +4,7 @@ import {isReservationUser} from './reservations.ts';
 import {apply} from './actions.ts';
 
 const backend=createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,{auth:{persistSession:false,autoRefreshToken:false}});
-const json=(value:Record<string,unknown>,status=200)=>Response.json({...value,capabilities:{coordinationV1:true,reservationsV1:true},serverTime:new Date().toISOString()},{status,headers:{'Cache-Control':'private, no-store'}});
+const json=(value:Record<string,unknown>,status=200)=>Response.json({...value,capabilities:{coordinationV1:true,reservationsV1:true,reservationChangesV1:true},serverTime:new Date().toISOString()},{status,headers:{'Cache-Control':'private, no-store'}});
 const has=(files:Item[],id:string)=>files?.some(f=>f.id===id);
 Deno.serve(async(req:Request)=>{
   try{

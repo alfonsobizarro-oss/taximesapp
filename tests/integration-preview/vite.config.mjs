@@ -39,7 +39,7 @@ function mockApi() {return {name:'local-only-integration-api',configureServer(se
         if(body.version!==version)return reply(409,{error:'Actualiza la vista local'});
         try{apply(state,current,body);version++;}catch(error){return reply(400,{error:error.message});}
       }
-      return reply(200,{user:current,state:current.status==='active'?visible(state,current):null,version,setup:false,capabilities:{coordinationV1:true,reservationsV1:true},serverTime:new Date().toISOString()});
+      return reply(200,{user:current,state:current.status==='active'?visible(state,current):null,version,setup:false,capabilities:{coordinationV1:true,reservationsV1:true,reservationChangesV1:true},serverTime:new Date().toISOString()});
     }
     if(url.pathname.endsWith('/token')) {
       const email = url.searchParams.get('grant_type') === 'refresh_token' ? refreshAccounts.get(body.refresh_token)?.email : body.email;
@@ -52,4 +52,4 @@ function mockApi() {return {name:'local-only-integration-api',configureServer(se
     return reply(404,{error:'No fixture endpoint'});
   });
 }};}
-export default defineConfig({root:fileURLToPath(new URL('./',import.meta.url)),publicDir:project+'public',resolve:{alias:[{find:'./supabase-config',replacement:fileURLToPath(new URL('./supabase-config.ts',import.meta.url))},{find:'@',replacement:project}]},plugins:[react(),mockApi()],css:{postcss:{plugins:[tailwind()]}},server:{host:'127.0.0.1',port:4183,strictPort:true}});
+export default defineConfig({root:fileURLToPath(new URL('./',import.meta.url)),publicDir:project+'public',resolve:{alias:[{find:'./supabase-config',replacement:fileURLToPath(new URL('./supabase-config.ts',import.meta.url))},{find:'@',replacement:project}]},plugins:[react(),mockApi()],css:{postcss:{plugins:[tailwind()]}},server:{host:'127.0.0.1',port:Number(process.env.TAXIMES_PREVIEW_PORT||4183),strictPort:true}});

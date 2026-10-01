@@ -41,6 +41,22 @@ const call=(route='state',action=null,token=true)=>handler(new Request('http://t
  assert.equal((await call('state',{type:'chat.send',text:'forbidden'})).status,400);
  res=await call();json=await res.json();for(const key of ['members','messages','incidents','documents','shifts','audit'])assert.deepEqual(json.state[key],[]);
  assert.equal(json.state.users.length,1);assert.equal(json.state.users[0].id,'reserve');
+
+ // Exercise edits and reconfirmation through the real authenticated API handler.
+ account=admin;state.members.push({id:'m',status:'active'});
+ assert.equal((await call('state',{type:'reservation.save',kind:'MONOVOLUMEN',start:new Date(Date.now()+7200000).toISOString(),pickup:'A',destination:'B'})).status,200);
+ const reservationId=state.reservations[0].id;
+ assert.equal((await call('state',{type:'reservation.publish',id:reservationId})).status,200);
+ account=reserve;assert.equal((await call('state',{type:'reservation.accept',id:reservationId,confirm:true})).status,200);
+ const oldRevision=state.reservations[0].revision;
+ assert.equal((await call('state',{type:'reservation.confirm',id:reservationId,revision:oldRevision})).status,200);
+ assert.equal((await call('state',{...state.reservations[0],type:'reservation.save',pickup:'Spoof'})).status,400);
+ account=admin;assert.equal((await call('state',{...state.reservations[0],type:'reservation.save',pickup:'Nueva recogida'})).status,200);
+ assert.equal(state.reservations[0].assignedTo,reserve.id);assert.equal(state.reservations[0].confirmedAt,null);
+ assert.equal((await call('state',{...state.reservations[0],type:'reservation.save',kind:'ADAPTADO'})).status,400);
+ account=reserve;res=await call();json=await res.json();assert.equal(json.capabilities.reservationChangesV1,true);assert.equal(json.state.reservations[0].reconfirmationRequired,true);
+ assert.equal((await call('state',{type:'reservation.confirm',id:reservationId,revision:oldRevision})).status,400,'refreshed workspace version cannot confirm an old reservation revision');
+ assert.equal((await call('state',{type:'reservation.confirm',id:reservationId,revision:state.reservations[0].revision})).status,200);
  account=admin;res=await call('coordination-history');assert.equal(res.status,200);assert.equal((await res.json()).events[0].id,'event');
  assert.equal((await call('coordination-history?before=bad')).status,400);
  // Confirmed registration is persisted once, pending and without metadata permissions.

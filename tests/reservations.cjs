@@ -13,18 +13,18 @@ for(const u of [adapt,{...mono,status:'blocked'},{...mono,role:'delegate'}])asse
 assert.throws(()=>act(s,mono,{type:'reservation.accept',id:r.id},now),/Confirma/);
 act(s,mono,{type:'reservation.accept',id:r.id,confirm:true,assignedTo:'adapt'},now);assert.equal(r.assignedTo,'mono');assert.equal(r.acceptedAt,now.toISOString());
 assert.throws(()=>act(s,both,{type:'reservation.accept',id:r.id,confirm:true},now));
-act(s,mono,{type:'reservation.confirm',id:r.id},now);assert.ok(r.confirmedAt);
+act(s,mono,{type:'reservation.confirm',id:r.id,revision:r.revision},now);assert.ok(r.confirmedAt);
 const ev=act(s,mono,{type:'reservation.release',id:r.id,reason:'Avería'},now);assert.equal(r.assignedTo,'mono');assert.equal(r.status,'assigned');assert.equal(r.confirmedAt,null);assert.equal(ev[0].before.releaseRequest,null);assert.equal(ev[0].after.releaseRequest.reason,'Avería');
-assert.throws(()=>act(s,mono,{type:'reservation.republish',id:r.id},now));assert.throws(()=>act(s,mono,{type:'reservation.confirm',id:r.id},now));
+assert.throws(()=>act(s,mono,{type:'reservation.republish',id:r.id},now));assert.throws(()=>act(s,mono,{type:'reservation.confirm',id:r.id,revision:r.revision},now));
 act(s,admin,{type:'reservation.republish',id:r.id},now);assert.equal(r.assignedTo,null);assert.equal(r.releaseRequest,null);
 for(const type of ['chat.send','document.read','shift.create','member.edit','user.update','import'])assert.throws(()=>apply(s,mono,{type}));
 for(const key of ['members','shifts','incidents','messages','polls','documents','audit','coverageRequests'])assert.deepEqual(visible(s,mono)[key],[]);
 assert.throws(()=>act(s,mono,{type:'reservation.authorize',userId:'both'},now));
 act(s,admin,{type:'reservation.authorize',userId:'both',memberId:'m',status:'active',reservationTypes:['ADAPTADO']},now);assert.deepEqual(both.reservationTypes,['ADAPTADO']);
 act(s,admin,{type:'reservation.cancel',id:r.id,reason:'Cliente cancela'},now);assert.equal(visible(s,mono).reservations.length,0);
-// A cancellation keeps historical ownership but must remain editable after access is revoked.
+// A cancellation keeps historical ownership, but cannot be edited, even after access is revoked.
 const cancelled=create();act(s,admin,{type:'reservation.publish',id:cancelled.id},now);act(s,mono,{type:'reservation.accept',id:cancelled.id,confirm:true},now);act(s,admin,{type:'reservation.cancel',id:cancelled.id,reason:'Reprogramar'},now);mono.status='blocked';
-act(s,admin,{...cancelled,type:'reservation.save',start:'2026-10-04T10:00:00.000Z'},now);act(s,admin,{type:'reservation.republish',id:cancelled.id},now);assert.equal(cancelled.assignedTo,null);assert.equal(cancelled.status,'pending');
+assert.throws(()=>act(s,admin,{...cancelled,type:'reservation.save',start:'2026-10-04T10:00:00.000Z'},now),/cancelada/);act(s,admin,{type:'reservation.republish',id:cancelled.id},now);assert.equal(cancelled.assignedTo,null);assert.equal(cancelled.status,'pending');
 assert.equal(madridISO('2026-10-03T12:00'),'2026-10-03T10:00:00.000Z');assert.throws(()=>madridISO('2026-10-25T02:30'));assert.throws(()=>madridISO('2026-03-29T02:30'));assert.equal(calendarDays('2026-10-01','month').length,42);
 for(const name of ['model','actions','reservations'])assert.equal(fs.readFileSync('lib/'+name+'.ts','utf8').replace(/from '(\.\/[^']+)'/g,"from '$1.ts'"),fs.readFileSync('supabase/functions/taximes-api/'+name+'.ts','utf8'));
 console.log('PASS: reservation lifecycle, separate authorizations, spoofed assignee denied, second confirmation, renunciation, restricted state/actions, Central access, Madrid DST and Edge parity.');
