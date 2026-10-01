@@ -13,7 +13,7 @@ export function nextMinute(now = new Date()) {
   return madridMinute(new Date(Math.ceil(now.getTime() / 60000) * 60000));
 }
 export function coveringShifts(s: State) {
-  const active = new Set(s.users.filter(u => u.status === 'active').map(u => u.id));
+  const active = new Set(s.users.filter(u => u.status === 'active' && ['root', 'admin', 'delegate'].includes(u.role)).map(u => u.id));
   return s.shifts.filter(sh => sh.status !== 'cancelled' && sh.start < sh.end && active.has(sh.userId));
 }
 export function advisersNow(s: State, at: string) {
